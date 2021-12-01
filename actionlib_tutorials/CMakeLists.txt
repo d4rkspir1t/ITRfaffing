@@ -1,0 +1,43 @@
+cmake_minimum_required(VERSION 2.8.3)
+project(actionlib_tutorials)
+
+find_package(catkin REQUIRED COMPONENTS roscpp actionlib actionlib_msgs)
+find_package(Boost REQUIRED COMPONENTS system)
+
+add_action_files(
+  DIRECTORY action
+  FILES Fibonacci.action
+)
+
+generate_messages(
+  DEPENDENCIES actionlib_msgs std_msgs
+)
+
+catkin_package(
+  CATKIN_DEPENDS actionlib_msgs
+)
+
+include_directories(include ${catkin_INCLUDE_DIRS} ${Boost_INCLUDE_DIRS})
+
+# add_executable(fibonacci_server src/fibonacci_server.cpp)
+
+# target_link_libraries(
+#   fibonacci_server
+#   ${catkin_LIBRARIES}
+# )
+
+# add_dependencies(
+#   fibonacci_server
+#   ${actionlib_tutorials_EXPORTED_TARGETS}
+# )
+
+catkin_install_python(PROGRAMS
+	src/fibonacci_server.py
+  src/fibonacci_client.py
+	DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# catkin_install_python(PROGRAMS
+#   src/fibonacci_client.py
+#  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+# )

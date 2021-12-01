@@ -1,0 +1,11 @@
+#goal
+float32[] goal
+---
+
+#result
+string result
+---
+
+#feedback
+float32[] currentPosition
+
