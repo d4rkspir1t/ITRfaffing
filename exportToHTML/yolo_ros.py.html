@@ -1,0 +1,96 @@
+<html>
+<head>
+<title>yolo_ros.py</title>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<style type="text/css">
+.s0 { color: #808080;}
+.s1 { color: #a9b7c6;}
+.s2 { color: #cc7832;}
+.s3 { color: #6a8759;}
+.s4 { color: #6897bb;}
+</style>
+</head>
+<body bgcolor="#2b2b2b">
+<table CELLSPACING=0 CELLPADDING=5 COLS=1 WIDTH="100%" BGCOLOR="#606060" >
+<tr><td><center>
+<font face="Arial, Helvetica" color="#000000">
+yolo_ros.py</font>
+</center></td></tr></table>
+<pre><span class="s0">#!/usr/bin/env python3</span>
+<span class="s0"># coding=utf-8</span>
+<span class="s2">import </span><span class="s1">rospy</span>
+<span class="s2">from </span><span class="s1">cv_bridge3 </span><span class="s2">import </span><span class="s1">CvBridge  </span><span class="s0"># Note: normally this would be from cv_bridge import CvBridge</span>
+<span class="s2">from </span><span class="s1">cv_bridge3 </span><span class="s2">import </span><span class="s1">cv2  </span><span class="s0"># this should be import cv2</span>
+<span class="s2">import </span><span class="s1">numpy </span><span class="s2">as </span><span class="s1">np</span>
+<span class="s2">from </span><span class="s1">yolov4 </span><span class="s2">import </span><span class="s1">Detector</span>
+<span class="s2">import </span><span class="s1">random</span>
+<span class="s2">from </span><span class="s1">sensor_msgs.msg </span><span class="s2">import </span><span class="s1">Image</span>
+<span class="s2">from </span><span class="s1">itr_pkg.srv </span><span class="s2">import </span><span class="s1">YOLOLastFrame</span><span class="s2">, </span><span class="s1">YOLOLastFrameResponse</span>
+<span class="s2">from </span><span class="s1">itr_pkg.msg </span><span class="s2">import </span><span class="s1">YOLODetection</span>
+
+
+<span class="s2">class </span><span class="s1">YOLOv4ROSITR:</span>
+    <span class="s2">def </span><span class="s1">__init__(self):</span>
+        <span class="s1">self.bridge = CvBridge()</span>
+        <span class="s1">self.cv_image = </span><span class="s2">None</span>
+        <span class="s1">self.colors = {}</span>
+        <span class="s1">self.cam_subs = rospy.Subscriber(</span><span class="s3">'/usb_cam/image_raw'</span><span class="s2">, </span><span class="s1">Image</span><span class="s2">, </span><span class="s1">self.img_callback)</span>
+        <span class="s1">self.yolo_srv = rospy.Service(</span><span class="s3">'/detect_frame'</span><span class="s2">, </span><span class="s1">YOLOLastFrame</span><span class="s2">, </span><span class="s1">self.yolo_service)</span>
+        <span class="s1">self.cam_pub = rospy.Publisher(</span><span class="s3">'/itr_pkg/image_raw'</span><span class="s2">, </span><span class="s1">Image</span><span class="s2">, </span><span class="s1">queue_size=</span><span class="s4">10</span><span class="s1">)</span>
+
+    <span class="s2">def </span><span class="s1">img_callback(self</span><span class="s2">, </span><span class="s1">msg):</span>
+        <span class="s1">self.cv_image = self.bridge.imgmsg_to_cv2(msg</span><span class="s2">, </span><span class="s1">desired_encoding=</span><span class="s3">'passthrough'</span><span class="s1">)</span>
+        <span class="s0"># rospy.loginfo('got a new image.')</span>
+
+    <span class="s2">def </span><span class="s1">yolo_service(self</span><span class="s2">, </span><span class="s1">request):</span>
+        <span class="s1">res = YOLOLastFrameResponse()</span>
+        <span class="s2">if </span><span class="s1">self.cv_image </span><span class="s2">is not None</span><span class="s1">:</span>
+            <span class="s1">cv_copy = self.cv_image.copy()</span>
+            <span class="s1">self.detector = Detector(gpu_id=</span><span class="s4">0</span><span class="s2">, </span><span class="s1">config_path=</span><span class="s3">'/home/viktor/Desktop/darknet/cfg/yolov4.cfg'</span><span class="s2">,</span>
+                                     <span class="s1">weights_path=</span><span class="s3">'/home/viktor/Desktop/darknet/cfg/yolov4.weights'</span><span class="s2">,</span>
+                                     <span class="s1">lib_darknet_path=</span><span class="s3">'/home/viktor/Desktop/darknet/libdarknet.so'</span><span class="s2">,</span>
+                                     <span class="s1">meta_path=</span><span class="s3">'/home/viktor/itr_pkg/src/itr_pkg/cfg/coco.data'</span><span class="s1">)</span>
+            <span class="s1">img_arr = cv2.resize(self.cv_image</span><span class="s2">, </span><span class="s1">(self.detector.network_width()</span><span class="s2">, </span><span class="s1">self.detector.network_height()))</span>
+            <span class="s1">detections = self.detector.perform_detect(image_path_or_buf=img_arr</span><span class="s2">, </span><span class="s1">show_image=</span><span class="s2">True</span><span class="s1">)</span>
+
+            <span class="s1">cv_height</span><span class="s2">, </span><span class="s1">cv_width</span><span class="s2">, </span><span class="s1">_ = self.cv_image.shape</span>
+            <span class="s0"># rospy.loginfo(len(detections))</span>
+            <span class="s2">for </span><span class="s1">detection </span><span class="s2">in </span><span class="s1">detections:</span>
+                <span class="s1">box = detection.left_x</span><span class="s2">, </span><span class="s1">detection.top_y</span><span class="s2">, </span><span class="s1">detection.width</span><span class="s2">, </span><span class="s1">detection.height</span>
+                <span class="s1">print(</span><span class="s3">f'</span><span class="s2">{</span><span class="s1">detection.class_name.ljust(</span><span class="s4">10</span><span class="s1">)</span><span class="s2">} </span><span class="s3">| </span><span class="s2">{</span><span class="s1">detection.class_confidence * </span><span class="s4">100</span><span class="s2">:</span><span class="s3">.1f</span><span class="s2">} </span><span class="s3">% | </span><span class="s2">{</span><span class="s1">box</span><span class="s2">}</span><span class="s3">'</span><span class="s1">)</span>
+                <span class="s1">d = YOLODetection(detection.class_name</span><span class="s2">, </span><span class="s1">detection.class_confidence</span><span class="s2">, </span><span class="s1">detection.left_x</span><span class="s2">, </span><span class="s1">detection.top_y</span><span class="s2">,</span>
+                                  <span class="s1">detection.width</span><span class="s2">, </span><span class="s1">detection.height)</span>
+                <span class="s0"># convert bbox to image space</span>
+                <span class="s1">d.bbox_x = int((d.bbox_x/self.detector.network_width())*cv_width)</span>
+                <span class="s1">d.bbox_y = int((d.bbox_y/self.detector.network_height())*cv_height)</span>
+                <span class="s1">d.width = int((d.width/self.detector.network_width())*cv_width)</span>
+                <span class="s1">d.height = int((d.height/self.detector.network_height())*cv_height)</span>
+                <span class="s1">res.detections.append(d)</span>
+
+                <span class="s0"># This paints the bounding boxes in the images with the name in it.</span>
+                <span class="s2">if </span><span class="s1">d.name </span><span class="s2">in </span><span class="s1">self.colors:</span>
+                    <span class="s1">color = self.colors[d.name]</span>
+                <span class="s2">else</span><span class="s1">:</span>
+                    <span class="s1">color = (random.randint(</span><span class="s4">0</span><span class="s2">, </span><span class="s4">255</span><span class="s1">)</span><span class="s2">, </span><span class="s1">random.randint(</span><span class="s4">0</span><span class="s2">, </span><span class="s4">255</span><span class="s1">)</span><span class="s2">, </span><span class="s1">random.randint(</span><span class="s4">0</span><span class="s2">, </span><span class="s4">255</span><span class="s1">))</span>
+                    <span class="s1">self.colors[d.name] = color</span>
+                <span class="s1">cv2.rectangle(cv_copy</span><span class="s2">, </span><span class="s1">(d.bbox_x</span><span class="s2">, </span><span class="s1">d.bbox_y)</span><span class="s2">, </span><span class="s1">(d.bbox_x+d.width</span><span class="s2">, </span><span class="s1">d.bbox_y+d.height)</span><span class="s2">, </span><span class="s1">color</span><span class="s2">, </span><span class="s4">2</span><span class="s1">)</span>
+                <span class="s1">cv2.rectangle(cv_copy</span><span class="s2">, </span><span class="s1">(d.bbox_x</span><span class="s2">, </span><span class="s1">d.bbox_y)</span><span class="s2">, </span><span class="s1">(d.bbox_x+</span><span class="s4">5</span><span class="s1">+(</span><span class="s4">23</span><span class="s1">*len(d.name))</span><span class="s2">, </span><span class="s1">d.bbox_y+</span><span class="s4">30</span><span class="s1">)</span><span class="s2">, </span><span class="s1">color</span><span class="s2">, </span><span class="s1">-</span><span class="s4">1</span><span class="s1">)</span>
+                <span class="s1">cv2.putText(cv_copy</span><span class="s2">, </span><span class="s1">d.name</span><span class="s2">, </span><span class="s1">(d.bbox_x+</span><span class="s4">2</span><span class="s2">, </span><span class="s1">d.bbox_y+</span><span class="s4">25</span><span class="s1">)</span><span class="s2">, </span><span class="s1">cv2.FONT_HERSHEY_PLAIN</span><span class="s2">, </span><span class="s4">2.5</span><span class="s2">, </span><span class="s1">(</span><span class="s4">0</span><span class="s2">,</span><span class="s4">0</span><span class="s2">,</span><span class="s4">0</span><span class="s1">))</span>
+
+                <span class="s1">painted_img = self.bridge.cv2_to_imgmsg(cv_copy)</span>
+                <span class="s1">self.cam_pub.publish(painted_img)</span>
+                <span class="s0"># TODO: publish the inpainted image</span>
+                <span class="s0"># Helper: to convert from opencv image to a image message you can do : message = self.bridge.cv2_to_imgmsg(cv_copy)</span>
+        <span class="s2">else</span><span class="s1">:</span>
+            <span class="s1">rospy.logerror(</span><span class="s3">'I have not yet received an image.'</span><span class="s1">)</span>
+        <span class="s0"># return True</span>
+        <span class="s2">return </span><span class="s1">res</span>
+
+
+<span class="s2">if </span><span class="s1">__name__ == </span><span class="s3">'__main__'</span><span class="s1">:</span>
+    <span class="s1">rospy.init_node(</span><span class="s3">'yolo_ros_itr'</span><span class="s1">)</span>
+    <span class="s1">yolo_ros = YOLOv4ROSITR()</span>
+    <span class="s1">rospy.spin()</span>
+</pre>
+</body>
+</html>

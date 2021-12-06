@@ -28,9 +28,9 @@ class YOLOv4ROSITR:
         res = YOLOLastFrameResponse()
         if self.cv_image is not None:
             cv_copy = self.cv_image.copy()
-            self.detector = Detector(gpu_id=0, config_path='Desktop/darknet/cfg/yolov4.cfg',
-                                     weights_path='Desktop/darknet/cfg/yolov4.weights',
-                                     lib_darknet_path='Desktop/darknet/libdarknet.so',
+            self.detector = Detector(gpu_id=0, config_path='/home/viktor/Desktop/darknet/cfg/yolov4.cfg',
+                                     weights_path='/home/viktor/Desktop/darknet/cfg/yolov4.weights',
+                                     lib_darknet_path='/home/viktor/Desktop/darknet/libdarknet.so',
                                      meta_path='/home/viktor/itr_pkg/src/itr_pkg/cfg/coco.data')
             img_arr = cv2.resize(self.cv_image, (self.detector.network_width(), self.detector.network_height()))
             detections = self.detector.perform_detect(image_path_or_buf=img_arr, show_image=True)
