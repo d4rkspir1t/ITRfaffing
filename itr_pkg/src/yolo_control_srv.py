@@ -9,6 +9,7 @@ import random
 from sensor_msgs.msg import Image
 from itr_pkg.srv import YOLOLastFrame, YOLOLastFrameResponse
 from itr_pkg.msg import YOLODetection
+from geometry_msgs.msg import Twist
 
 
 class YOLOv4ROSITR:
@@ -18,31 +19,57 @@ class YOLOv4ROSITR:
         self.colors = {}
         self.cam_subs = rospy.Subscriber('/usb_cam/image_raw', Image, self.img_callback)
         self.yolo_srv = rospy.Service('/detect_frame', YOLOLastFrame, self.yolo_service)
-        self.cam_pub = rospy.Publisher('/itr_pkg/image_raw', Image, queue_size=10)
-        self.first_img = False
+        # self.cam_pub = rospy.Publisher('/itr_pkg/image_raw', Image, queue_size=10)
+        self.robot_move = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
+        self.detector = Detector(gpu_id=0, config_path='/opt/darknet/cfg/yolov4.cfg',
+                                 weights_path='/opt/darknet/yolov4.weights',
+                                 lib_darknet_path='/opt/darknet/libdarknet.so',
+                                 meta_path='/home/viktor/itr_ws/src/itr_pkg/cfg/coco.data')
+        self.srv_resp = None
+        self.move_it()
 
-    def img_callback(self, msg):
-        self.cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
-        if not self.first_img:
-            rospy.loginfo('got a new image.')
-            self.first_img = True
+    def move_it(self):
+        rate = rospy.Rate(10)  # 10hz
+        twist = Twist()
+
+        while not rospy.is_shutdown():
+            rospy.wait_for_service('/detect_frame')
+            try:
+                get_detections = rospy.ServiceProxy('/detect_frame', YOLOLastFrame)
+                resp1 = get_detections()
+                # rospy.loginfo(resp1)
+                self.srv_resp = resp1
+            except rospy.ServiceException as e:
+                rospy.logerror("Service call failed: %s" % e)
+
+            if self.srv_resp is not None:
+                detections = self.srv_resp.detections
+                for detection in detections:
+                    rospy.loginfo('I\'ve found: %s ' % (detection.name))
+                    if 'cup' in detection.name or 'glass' in detection.name:
+                        twist.linear.x = 5
+                        twist.angular.z = 0
+                    elif 'phone' in detection.name:
+                        twist.linear.x = 0
+                        twist.angular.z = 0.5
+                    else:
+                        twist = Twist()
+                    self.robot_move.publish(twist)
+                else:
+                    twist = Twist()
+                    self.robot_move.publish(twist)
+            rate.sleep()
 
     def yolo_service(self, request):
         res = YOLOLastFrameResponse()
         if self.cv_image is not None:
             cv_copy = self.cv_image.copy()
-            self.detector = Detector(gpu_id=0, config_path='/opt/darknet/cfg/yolov4.cfg',
-                                     weights_path='/opt/darknet/yolov4.weights',
-                                     lib_darknet_path='/opt/darknet/libdarknet.so',
-                                     meta_path='/home/viktor/itr_ws/src/itr_pkg/cfg/coco.data')
             img_arr = cv2.resize(self.cv_image, (self.detector.network_width(), self.detector.network_height()))
             detections = self.detector.perform_detect(image_path_or_buf=img_arr, show_image=True)
 
             cv_height, cv_width, _ = self.cv_image.shape
             # rospy.loginfo(len(detections))
             for detection in detections:
-                box = detection.left_x, detection.top_y, detection.width, detection.height
-                print(f'{detection.class_name.ljust(10)} | {detection.class_confidence * 100:.1f} % | {box}')
                 d = YOLODetection(detection.class_name, detection.class_confidence, detection.left_x, detection.top_y,
                                   detection.width, detection.height)
                 # convert bbox to image space
@@ -51,23 +78,14 @@ class YOLOv4ROSITR:
                 d.width = int((d.width/self.detector.network_width())*cv_width)
                 d.height = int((d.height/self.detector.network_height())*cv_height)
                 res.detections.append(d)
-
-                # This paints the bounding boxes in the images with the name in it.
-                if d.name in self.colors:
-                    color = self.colors[d.name]
-                else:
-                    color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-                    self.colors[d.name] = color
-                cv2.rectangle(cv_copy, (d.bbox_x, d.bbox_y), (d.bbox_x+d.width, d.bbox_y+d.height), color, 2)
-                cv2.rectangle(cv_copy, (d.bbox_x, d.bbox_y), (d.bbox_x+5+(23*len(d.name)), d.bbox_y+30), color, -1)
-                cv2.putText(cv_copy, d.name, (d.bbox_x+2, d.bbox_y+25), cv2.FONT_HERSHEY_PLAIN, 2.5, (0,0,0))
-
-                painted_img = self.bridge.cv2_to_imgmsg(cv_copy)
-                self.cam_pub.publish(painted_img)
         else:
             rospy.logerror('I have not yet received an image.')
         # return True
         return res
+
+    def img_callback(self, msg):
+        self.cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='passthrough')
+        # rospy.loginfo('got a new image.')
 
 
 if __name__ == '__main__':
