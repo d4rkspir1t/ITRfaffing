@@ -163,6 +163,8 @@ include_directories(
 catkin_install_python(PROGRAMS
   src/lecture_code.py
   src/go_for_tea_sm.py
+  src/vacuum_cleaner_sm.py
+  src/vacuum_smach_states.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
